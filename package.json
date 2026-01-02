@@ -1,15 +1,27 @@
 {
-  "name": "autoblock-bot",
+  "name": "sk7-autoblock",
   "version": "1.0.0",
-  "description": "WhatsApp Bot with Autoblock feature",
+  "description": "WhatsApp Bot with Autoblock, Signaler and Animated Stickers support",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "baileys",
+    "autoblock",
+    "sticker",
+    "telegram",
+    "tgs"
+  ],
+  "author": "Dyby-Tech",
+  "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "npm:@alannxd/baileys",
     "@hapi/boom": "^10.0.1",
+    "axios": "^1.6.0",
     "pino": "^9.0.0",
-    "readline": "latest"
+    "wa-sticker-formatter": "^4.4.4"
   }
 }
