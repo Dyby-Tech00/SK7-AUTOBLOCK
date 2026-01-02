@@ -18,7 +18,7 @@
   "author": "Dyby-Tech",
   "license": "MIT",
   "dependencies": {
-    "@whiskeysockets/baileys": "npm:@alannxd/baileys",
+    "@whiskeysockets/baileys": "npm:angularsockets",
     "@hapi/boom": "^10.0.1",
     "axios": "^1.6.0",
     "pino": "^9.0.0",
