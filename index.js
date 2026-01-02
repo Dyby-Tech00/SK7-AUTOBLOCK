@@ -8,10 +8,16 @@ const {
 const pino = require('pino');
 const { Boom } = require('@hapi/boom');
 const readline = require('readline');
+const fs = require('fs');
+const axios = require('axios');
+
 
 const autoblockUsers = new Set();
+const signalerUsers = new Set();
 const startTime = Date.now();
-const ownerNumber = "33612345678@s.whatsapp.net"; // ⚠️ MODIFIE ICI
+const ownerNumber = "243894096430@s.whatsapp.net"; // ⚠️ MODIFIE TON NUMÉRO ICI
+
+let isPublic = false; 
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const question = (text) => new Promise((resolve) => rl.question(text, resolve));
@@ -22,15 +28,23 @@ function runtime(seconds) {
     var h = Math.floor(seconds % (3600 * 24) / 3600);
     var m = Math.floor(seconds % 3600 / 60);
     var s = Math.floor(seconds % 60);
-    var dDisplay = d > 0 ? d + " ᴅ, " : "";
-    var hDisplay = h > 0 ? h + " ʜ, " : "";
-    var mDisplay = m > 0 ? m + " ᴍ, " : "";
-    var sDisplay = s > 0 ? s + " s" : "";
-    return dDisplay + hDisplay + mDisplay + sDisplay;
+    return `${d}ᴅ, ${h}ʜ, ${m}ᴍ, ${s}s`;
 }
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+    let phoneNumber = "";
+    let sessionFolder = "";
+    const existingSessions = fs.readdirSync('./').filter(file => file.startsWith('session_'));
+    
+    if (existingSessions.length > 0) {
+        sessionFolder = existingSessions[0];
+    } else {
+        phoneNumber = await question('❓ ᴇɴᴛᴇʀ ᴘʜᴏɴᴇ ɴᴜᴍʙᴇʀ: ');
+        phoneNumber = phoneNumber.replace(/[^0-9]/g, '');
+        sessionFolder = `session_${phoneNumber}`;
+    }
+
+    const { state, saveCreds } = await useMultiFileAuthState(sessionFolder);
     const { version } = await fetchLatestBaileysVersion();
 
     const socket = makeWASocket({
@@ -45,20 +59,21 @@ async function startBot() {
     });
 
     if (!socket.authState.creds.registered) {
-        const phoneNumber = await question('❓ ᴘʟᴇᴀsᴇ ᴇɴᴛᴇʀ ʏᴏᴜʀ ᴘʜᴏɴᴇ ɴᴜᴍʙᴇʀ: ');
+        if (!phoneNumber) phoneNumber = await question('❓ ʀᴇ-ᴇɴᴛᴇʀ ɴᴜᴍʙᴇʀ ғᴏʀ ᴘᴀɪʀɪɴɢ: ');
         const code = await socket.requestPairingCode(phoneNumber.replace(/[^0-9]/g, ''));
         console.log(`\n🔗 ʏᴏᴜʀ ᴘᴀɪʀɪɴɢ ᴄᴏᴅᴇ: \x1b[32m${code}\x1b[0m\n`);
     }
 
     socket.ev.on('creds.update', saveCreds);
 
-    socket.ev.on('connection.update', (update) => {
+    socket.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startBot();
         } else if (connection === 'open') {
-            console.log('✅ ʙᴏᴛ ᴄᴏɴɴᴇᴄᴛᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!');
+            console.log('✅ ʙᴏᴛ ᴄᴏɴɴᴇᴄᴛᴇᴅ!');
+            await socket.sendMessage(ownerNumber, { text: `✅ *ʙᴏᴛ ɪs ᴏɴʟɪɴᴇ!*\n*ᴍᴏᴅᴇ:* ${isPublic ? 'ᴘᴜʙʟɪᴄ' : 'sᴇʟғ'}\n*🆙 ᴜᴘᴛɪᴍᴇ:* ${runtime(0)}` });
         }
     });
 
@@ -68,61 +83,88 @@ async function startBot() {
 
         const sender = msg.key.remoteJid;
         const messageText = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
-        const args = messageText.trim().split(/ +/).slice(1);
         const command = messageText.trim().split(/ +/)[0].toLowerCase();
-        const isGroup = sender.endsWith('@g.us');
+        const args = messageText.trim().split(/ +/).slice(1);
         const isCreator = sender === ownerNumber;
 
+        if (!isPublic && !isCreator) return; 
+
         switch (command) {
+            case '.menu': {
+                const uptimeSeconds = (Date.now() - startTime) / 1000;
+                let menuText = `╭━━━━━〔 *✨ ᴀᴜᴛᴏʙʟᴏᴄᴋ-ʙᴏᴛ ✨* 〕━━━━━╮\n┃\n`;
+                menuText += `┃  ✨ *ʜᴇʟʟᴏ:* @${sender.split('@')[0]}\n`;
+                menuText += `┃  🔐 *ᴍᴏᴅᴇ:* ${isPublic ? 'ᴘᴜʙʟɪᴄ' : 'sᴇʟғ'}\n`;
+                menuText += `┃  🆙 *ᴜᴘᴛɪᴍᴇ:* ${runtime(uptimeSeconds)}\n┃\n`;
+                menuText += `┣━━━━━〔 *🚀 ᴄᴏᴍᴍᴀɴᴅs* 〕━━━━━\n┃\n`;
+                menuText += `┃  ┝ ⚡ .ᴘɪɴɢ / .ᴜᴘᴛɪᴍᴇ\n`;
+                menuText += `┃  ┝ 🛡️ .ᴘᴜʙʟɪᴄ / .sᴇʟғ\n`;
+                menuText += `┃  ┝ 🚫 .ᴀᴜᴛᴏʙʟᴏᴄᴋ ᴏɴ/ᴏғғ\n`;
+                menuText += `┃  ┝ 📢 .sɪɢɴᴀʟᴇʀ ᴏɴ/ᴏғғ [ɴᴜᴍʙᴇʀ]\n`;
+                menuText += `┃  ┝ 🔄 .ʀᴇᴄᴏɴɴᴇᴄᴛ\n┃\n`;
+                menuText += `╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯`;
+                await socket.sendMessage(sender, { text: menuText, mentions: [sender] });
+                break;
+            }
+
             case '.ping': {
                 const start = Date.now();
                 await socket.sendMessage(sender, { text: "⏳ *ᴘɪɴɢɪɴɢ...*" });
-                const end = Date.now();
-                await socket.sendMessage(sender, { text: `🏓 *ᴘᴏɴɢ:* ${end - start}ᴍs` });
+                await socket.sendMessage(sender, { text: `🏓 *ᴘᴏɴɢ:* ${Date.now() - start}ᴍs` });
                 break;
             }
 
-            case '.uptime': {
-                const now = Date.now();
-                const uptimeSeconds = (now - startTime) / 1000;
-                const activeTime = runtime(uptimeSeconds);
-                await socket.sendMessage(sender, { text: `🆙 *ᴜᴘᴛɪᴍᴇ:* ${activeTime}` });
-                break;
-            }
+            case '.public': { if (isCreator) isPublic = true; reply("🔓 *ᴘᴜʙʟɪᴄ ᴍᴏᴅᴇ ᴏɴ*"); break; }
+            case '.self': { if (isCreator) isPublic = false; reply("🔒 *ᴘʀɪᴠᴀᴛᴇ ᴍᴏᴅᴇ ᴏɴ*"); break; }
 
             case '.autoblock': {
-                if (!isCreator) return await socket.sendMessage(sender, { text: "❌ *ᴀᴄᴄᴇss ᴅᴇɴɪᴇᴅ: ᴏɴʟʏ ᴏᴡɴᴇʀ ᴄᴀɴ ᴜsᴇ ᴛʜɪs.*" });
-                if (isGroup) return await socket.sendMessage(sender, { text: "❌ *ᴜsᴇ ᴛʜɪs ɪɴ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ (ᴅᴍ).*" });
-                if (!args[0]) return await socket.sendMessage(sender, { text: "📌 *ᴜsᴀɢᴇ:*\n.ᴀᴜᴛᴏʙʟᴏᴄᴋ ᴏɴ\n.ᴀᴜᴛᴏʙʟᴏᴄᴋ ᴏғғ" });
-
+                if (!isCreator) return;
                 if (args[0] === 'on') {
-                    if (autoblockUsers.has(sender)) return await socket.sendMessage(sender, { text: "⚠️ *ᴀʟʀᴇᴀᴅʏ ᴀᴄᴛɪᴠᴇ.*" });
                     autoblockUsers.add(sender);
-                    await socket.sendMessage(sender, { text: "🚫 *ᴀᴜᴛᴏʙʟᴏᴄᴋ ʟᴏᴏᴘ ᴀᴄᴛɪᴠᴀᴛᴇᴅ.*" });
-
-                    const runLoop = async (jid) => {
-                        while (autoblockUsers.has(jid)) {
-                            try {
-                                await socket.updateBlockStatus(jid, "block");
-                                await new Promise(r => setTimeout(r, 10000));
-                                if (!autoblockUsers.has(jid)) break;
-                                await socket.updateBlockStatus(jid, "unblock");
-                                await new Promise(r => setTimeout(r, 10000));
-                            } catch (e) {
-                                autoblockUsers.delete(jid);
-                                break;
-                            }
-                        }
-                    };
-                    runLoop(sender);
-                } else if (args[0] === 'off') {
+                    reply("🚫 *ᴀᴜᴛᴏʙʟᴏᴄᴋ ᴀᴄᴛɪᴠᴀᴛᴇᴅ.*");
+                    while (autoblockUsers.has(sender)) {
+                        await socket.updateBlockStatus(sender, "block");
+                        await new Promise(r => setTimeout(r, 10000));
+                        if (!autoblockUsers.has(sender)) break;
+                        await socket.updateBlockStatus(sender, "unblock");
+                        await new Promise(r => setTimeout(r, 10000));
+                    }
+                } else {
                     autoblockUsers.delete(sender);
                     await socket.updateBlockStatus(sender, "unblock");
-                    await socket.sendMessage(sender, { text: "✅ *ᴀᴜᴛᴏʙʟᴏᴄᴋ ʟᴏᴏᴘ ᴅᴇᴀᴄᴛɪᴠᴀᴛᴇᴅ.*" });
+                    reply("✅ *ᴀᴜᴛᴏʙʟᴏᴄᴋ ᴅᴇᴀᴄᴛɪᴠᴀᴛᴇᴅ.*");
                 }
                 break;
             }
+
+            case '.signaler': {
+                if (!isCreator) return;
+                let target = args[1] ? args[1].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : null;
+                if (!target) return reply("📌 *ᴜsᴀɢᴇ:* .sɪɢɴᴀʟᴇʀ ᴏɴ/ᴏғғ 509xxxxxx");
+
+                if (args[0] === 'on') {
+                    signalerUsers.add(target);
+                    reply(`📢 *sɪɢɴᴀʟɪɴɢ ʟᴏᴏᴘ sᴛᴀʀᴛᴇᴅ ᴏɴ:* ${args[1]}`);
+                    while (signalerUsers.has(target)) {
+                        await socket.updateBlockStatus(target, "block");
+                        await new Promise(r => setTimeout(r, 10000));
+                        if (!signalerUsers.has(target)) break;
+                        await socket.updateBlockStatus(target, "unblock");
+                        await new Promise(r => setTimeout(r, 10000));
+                    }
+                } else {
+                    signalerUsers.delete(target);
+                    await socket.updateBlockStatus(target, "unblock");
+                    reply(`✅ *sɪɢɴᴀʟᴇʀ sᴛᴏᴘᴘᴇᴅ ғᴏʀ:* ${args[1]}`);
+                }
+                break;
+            }
+
+            
+
+            case '.reconnect': { if (isCreator) process.exit(0); break; }
         }
+        function reply(text) { socket.sendMessage(sender, { text }); }
     });
 }
 
